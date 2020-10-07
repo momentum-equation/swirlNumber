@@ -1,0 +1,10 @@
+# neglect files generated during compilation
+.o .dep
+
+variables
+sourceFiles
+
+
+# neglect folders generated during compilation
+linux64GccDPInt64Opt/
+lnInclude/
