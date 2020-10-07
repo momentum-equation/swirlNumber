@@ -25,7 +25,36 @@ Class
     Foam::swirlNumber
 
 Description
-    Calculates and writes output of swirlNumber over a prescribed faceZone
+    Calculates and writes output of swirlNumber over a prescribed faceZone.
+
+    \heading functionObject usage on a faceZone
+
+    \table
+        Property        | Description     | Required    | Default value
+        faceZoneName    | name of facezone| yes         | -
+        pointZoneName   | pointzone name  | yes         | -
+        radius          | radius of zone  | yes         | 
+        origin          | centerpoint     | yes         | (0 0 0)
+        normal          | normal to zone  | yes         | (0 0 0)
+    \endtable
+
+    Example of the functionObject specification:
+    \verbatim
+    swirlNumberCalc
+    {
+        functionObjectLibs ("libswirlNumber.so");
+        type swirlNumber;
+        faceZoneName        planeFaceZone;
+        pointZoneName       planePointZone;
+        velocityFieldName   U;
+        radius              0.02625;
+        origin              (0 0 0);
+        normal              (1 0 0);
+    
+        writeControl       timeStep;
+        writeInterval      100;
+    }
+    \endverbatim
 
 SourceFiles
     swirlNumber.H
