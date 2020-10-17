@@ -103,13 +103,13 @@ class swirlNumber
         word faceZoneName_;
 
         //- Name of the pointZone
-        word pointZoneName_;
+        // word pointZoneName_;
 
         //- label of the facezone
         label faceZoneLabel_;
 
         //- label of the pointZone. Works best for pointZone created out of faceSet.
-        label pointZoneLabel_;
+        // label pointZoneLabel_;
         
         //- radius of the marked faceZone
         scalar patchRadius_;
@@ -127,7 +127,7 @@ class swirlNumber
 
         //- labelList of all points
         // const labelList& points_;
-        const labelList& points_;
+        // const labelList& points_;
 
     // Private Member Functions
 
@@ -196,7 +196,16 @@ public:
     
         //- Update for changes of mesh
         virtual void movePoints(const polyMesh&) {}
+    
+    private:
 
+        //- Calculation of face centers
+        Foam::vectorField faceCentres(const labelList&, vectorField&);
+
+        // Foam::surfaceVectorField faceCentres(const labelList&, vectorField&);
+        
+        Foam::surfaceScalarField calcTangentialU
+            (surfaceVectorField&, labelList&, vector&, vector&);
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

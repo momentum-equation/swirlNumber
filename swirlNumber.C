@@ -100,17 +100,17 @@ Foam::functionObjects::swirlNumber::swirlNumber
     // NOTE: Read the face zone to integrate over. Get its name from the dict, find
     // it in the mesh, and get a reference to the list of its faces.
     faceZoneName_(dict.lookup("faceZoneName")), 
-    pointZoneName_(dict.lookup("pointZoneName")),
+    // pointZoneName_(dict.lookup("pointZoneName")),
     
     faceZoneLabel_( mesh_.faceZones().findZoneID(faceZoneName_) ),
-    pointZoneLabel_( mesh_.pointZones().findZoneID(pointZoneName_) ),
+    // pointZoneLabel_( mesh_.pointZones().findZoneID(pointZoneName_) ),
     
     patchRadius_(0.),
     patchNormalVector_(vector::zero),
     originVector_(vector::zero),
     
-    faces_(mesh_.faceZones()[faceZoneLabel_]),
-    points_(mesh_.pointZones()[pointZoneLabel_])
+    faces_(mesh_.faceZones()[faceZoneLabel_])
+    // points_(mesh_.pointZones()[pointZoneLabel_])
 {
     // NOTE: calls the separate .read() method to import the controls from the dict.
     // dict reference is passed automatically by the OpenFOAM runtime object manager.
@@ -133,10 +133,6 @@ Foam::functionObjects::swirlNumber::swirlNumber
 
 Foam::functionObjects::swirlNumber::~swirlNumber()
 {}
-
-
-// * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
-
 
 // * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * * //
 
@@ -174,6 +170,65 @@ bool Foam::functionObjects::swirlNumber::end()
 void Foam::functionObjects::swirlNumber::timeSet()
 {}
 
+Foam::vectorField Foam::functionObjects::swirlNumber::faceCentres
+(
+     const labelList& zfs,
+     vectorField& p
+)
+{
+    const label nFaces = zfs.size();
+    vectorField fCtrs(nFaces, Zero);
+    //surfaceVectorField fCtrs(nFaces, Zero);
+
+    // for(label faceI = 0; faceI != zfs.size(); faceI++)
+    forAll(fCtrs, faceI)
+    {
+        const labelList& f = mesh_.faces()[zfs[faceI]];
+        label nPoints = f.size();
+
+        if(nPoints == 3)
+        {
+            fCtrs[faceI] = (1.0/3.0)*(p[f[0]] + p[f[1]] + p[f[2]]);
+        } 
+        else
+        {
+            scalar sumA = 0.0;
+            vector sumAC = Zero;
+
+            for (label pi = 0; pi < nPoints; pi++)
+            {
+                vector C = (1./3.)*(p[f[0]] + p[f[pi]] + p[f[(pi+1)%nPoints]]);
+                scalar A = 0.5*mag((p[f[0]] - p[f[pi]])^(p[f[0]] - p[f[(pi+1)%nPoints]]));
+
+                sumA += A;
+                sumAC += A*C;
+            }
+
+            label nPoints = f.size();
+            point fCentre = p[f[0]];
+            for(label pI = 1; pI < nPoints; pI++)
+            {
+                fCentre += p[f[pI]];
+            }
+            fCentre /= nPoints;
+            // This is to deal with zero-area faces. Mark very small faces
+            // to be detected in e.g., processorPolyPatch.
+            if (sumA < ROOTVSMALL)
+            {
+                fCtrs[faceI] = fCentre;
+            }
+            else
+            {
+                fCtrs[faceI] = sumAC/sumA;
+            }
+        }
+        
+    }
+        return fCtrs;
+}
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
 bool Foam::functionObjects::swirlNumber::write()
 {
     if (active_)
@@ -187,8 +242,6 @@ bool Foam::functionObjects::swirlNumber::write()
         // itnerpolate onto the faces
 	surfaceVectorField UFace = fvc::interpolate(U);
 
-        // surfaceScalarField radiusField();
-        // surfaceScalarField radiusField;
         scalar distanceVal;
 
         bool unitVectorSwitch = false;
@@ -201,88 +254,90 @@ bool Foam::functionObjects::swirlNumber::write()
         vector tangentUnitVector2;
         vector axialUnitVector;
 
-        //- fields holding axial and tangential velocity on the faceZone
-        // scalarField magAxialVelocity;
-        // scalarField magTangentialVelocity;
+        vectorField meshPoints = mesh_.Cf();
 
-
-        // for(label pointI = 0; pointI != points_.size(); pointI++)
-        // {
-        //     distanceVal = mag(mesh_.Cf()[points_[pointI]] - originVector_);
-        //     radiusField.append(distanceVal);
-        // }
-
-        for(label pointI = 0; pointI != points_.size(); pointI++)
+        vectorField zoneFaceCenters = faceCentres(faces_, meshPoints);
+        
+        for(label pointI = 0; pointI != zoneFaceCenters.size(); pointI++)
         {
-            distanceVal = mag(mesh_.Cf()[points_[pointI]] - originVector_);
+            Info << "line 260" << endl;
+            distanceVal = mag(zoneFaceCenters[pointI] - originVector_);
             
             //- Mutually orthogonal unit vectors in faceZone
             if(distanceVal >= patchRadius_/5.) 
             {
                 unitVectorSwitch = true;
                 axialUnitVector = patchNormalVector_/mag(patchNormalVector_);
-            }
-            if(unitVectorSwitch)
-            {
-                tangentUnitVector1 = mesh_.Cf()[points_[pointI]] - originVector_;
+                
+                tangentUnitVector1 = zoneFaceCenters[pointI] - originVector_;
                 tangentUnitVector1 /= mag(tangentUnitVector1);
 
                 tangentUnitVector2 = (tangentUnitVector1 ^ axialUnitVector);
                 tangentUnitVector2 /= mag(tangentUnitVector2);
+                Info << "Axial vector calculated." << endl;
 
                 break; // break out of the loop as soon as unit vectors are determined 
             }
         }
 
-        // magAxialVelocity = (UFace&axiaUnitVector);
-        // magTangentialVelocity = mag((UFace&tangentUnitVector1)*tangentUnitVector1 + (UFace&tangentUnitVector2)*tangentUnitVector2);
-
-
         //- Calculation of integrals necessary for calculation of swirl number
         scalar swirlNumber_;
         scalar GPhi(0.);
         scalar Gx(0.);
-        scalar magAxialU(0.);
-        scalar magTangentialU(0.);
+        // scalar magAxialU(0.);
+        // scalar magTangentialU(0.);
 
-        if(!(points_.size()==faces_.size()))
+
+        if(!(faces_.size()==zoneFaceCenters.size()))
         {
             Info << "Problem running utility" << endl;
         }
         else
         {
-            for(label indxI = 0; indxI!=points_.size(); indxI++)
-            {
-
-            distanceVal = mag(mesh_.Cf()[points_[indxI]] - originVector_);
-            magAxialU = UFace[faces_[indxI]]&axialUnitVector;
-            magTangentialU = mag((UFace[faces_[indxI]]&tangentUnitVector1)*tangentUnitVector1+(UFace[faces_[indxI]]&tangentUnitVector2)*tangentUnitVector2);
-            GPhi += distanceVal*magAxialU*magTangentialU*(mesh_.magSf()[faces_[indxI]]);
-            Gx += (sqr(magAxialU)-0.5*sqr(magTangentialU))*(mesh_.magSf()[faces_[indxI]]);
+            Info << "Starting swirl number calculation." << endl;
+            // for(label indxI = 0; indxI!=faces_.size(); indxI++)
+    
+            surfaceScalarField magTangentialU
+                (mag((UFace&tangentUnitVector1)*tangentUnitVector1 + (UFace&tangentUnitVector2)*tangentUnitVector2));
             
-            }
+            surfaceScalarField magAxialU(UFace&axialUnitVector);
+            
+            scalarField radiusField(mag(zoneFaceCenters - originVector_));
+
+            forAll(faces_, indxI)
+                GPhi += radiusField[indxI]*magAxialU[indxI]*magTangentialU[indxI]*mesh_.magSf()[faces_[indxI]];
+            forAll(faces_, indxI)    
+                Gx += (sqr(magAxialU[indxI])-0.5*sqr(magTangentialU[indxI]))*mesh_.magSf()[faces_[indxI]];
+
             swirlNumber_ = GPhi/(patchRadius_*Gx);
+            Info << "Returned swirl number." << endl;
+            Info << "Swirl number = " <<  swirlNumber_<< endl;
+        
+        // reduce for parallel running
+        //reduce(swirlNumber_, sumOp<scalar>());
+        //// reduce(GPhi, sumOp<scalar>());
+        //// reduce(Gx, sumOp<scalar>());
+
+        //Info << "Swirl number = " << swirlNumber_ << " through "
+        //    << returnReduce(faces_.size(), sumOp<label>()) << " faces" << nl << endl;
+        //// Info << "Numerator {GPhi} = " << GPhi  << returnReduce(faces_.size(), sumOp<label>()) << endl;
+        //// Info << "Denominator {R*Gx} = " << (Gx*patchRadius_) << returnReduce(faces_.size(), sumOp<label>()) << endl;
+        //// Output to file - only execute on the master thread to avoid the file
+        //// getting written into from a few processors at the same time
+        //if (Pstream::master())
+        //{
+        //    // Call the base class method which checks if the output file exists
+        //    // and creates it, if necessary. That also calls the .writeFileHeader()
+        //    // method of the derived class.
+        //    logFiles::write();
+
+        //    // Add the entry for this time step that has just been computed.
+        //    file(MAIN_FILE) << obr_.time().value() << tab << swirlNumber_ << endl;
         }
 
-        // reduce for parallel running
-        reduce(swirlNumber_, sumOp<scalar>());
-
-        Info << "Swirl number = " << swirlNumber_ << " through "
-             << returnReduce(faces_.size(), sumOp<label>()) << " faces" << nl << endl;
-
-        // Output to file - only execute on the master thread to avoid the file
-        // getting written into from a few processors at the same time
-        if (Pstream::master())
-        {
-            // Call the base class method which checks if the output file exists
-            // and creates it, if necessary. That also calls the .writeFileHeader()
-            // method of the derived class.
-            logFiles::write();
-
-            // Add the entry for this time step that has just been computed.
-            file(MAIN_FILE) << obr_.time().value() << tab << swirlNumber_ << endl;
         }
     }
+    Info << "Done calculation!" << endl;
     return true;
 }
 // ************************************************************************* //
