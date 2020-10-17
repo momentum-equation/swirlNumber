@@ -313,26 +313,25 @@ bool Foam::functionObjects::swirlNumber::write()
             Info << "Returned swirl number." << endl;
             Info << "Swirl number = " <<  swirlNumber_<< endl;
         
-        // reduce for parallel running
-        //reduce(swirlNumber_, sumOp<scalar>());
-        //// reduce(GPhi, sumOp<scalar>());
-        //// reduce(Gx, sumOp<scalar>());
+        reduce(swirlNumber_, sumOp<scalar>());
+        // reduce(GPhi, sumOp<scalar>());
+        // reduce(Gx, sumOp<scalar>());
 
-        //Info << "Swirl number = " << swirlNumber_ << " through "
-        //    << returnReduce(faces_.size(), sumOp<label>()) << " faces" << nl << endl;
-        //// Info << "Numerator {GPhi} = " << GPhi  << returnReduce(faces_.size(), sumOp<label>()) << endl;
-        //// Info << "Denominator {R*Gx} = " << (Gx*patchRadius_) << returnReduce(faces_.size(), sumOp<label>()) << endl;
-        //// Output to file - only execute on the master thread to avoid the file
-        //// getting written into from a few processors at the same time
-        //if (Pstream::master())
-        //{
-        //    // Call the base class method which checks if the output file exists
-        //    // and creates it, if necessary. That also calls the .writeFileHeader()
-        //    // method of the derived class.
-        //    logFiles::write();
+        Info << "Swirl number = " << swirlNumber_ << " through "
+            << returnReduce(faces_.size(), sumOp<label>()) << " faces" << nl << endl;
+        // Info << "Numerator {GPhi} = " << GPhi  << returnReduce(faces_.size(), sumOp<label>()) << endl;
+        // Info << "Denominator {R*Gx} = " << (Gx*patchRadius_) << returnReduce(faces_.size(), sumOp<label>()) << endl;
+        // Output to file - only execute on the master thread to avoid the file
+        // getting written into from a few processors at the same time
+        if (Pstream::master())
+        {
+            // Call the base class method which checks if the output file exists
+            // and creates it, if necessary. That also calls the .writeFileHeader()
+            // method of the derived class.
+            logFiles::write();
 
-        //    // Add the entry for this time step that has just been computed.
-        //    file(MAIN_FILE) << obr_.time().value() << tab << swirlNumber_ << endl;
+            // Add the entry for this time step that has just been computed.
+            file(MAIN_FILE) << obr_.time().value() << tab << swirlNumber_ << endl;
         }
 
         }
