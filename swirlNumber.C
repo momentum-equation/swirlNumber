@@ -150,11 +150,6 @@ bool Foam::functionObjects::swirlNumber::read(const dictionary& dict)
 
 bool Foam::functionObjects::swirlNumber::execute()
 {
-    if (active_)
-    {
-        // This gets called before write, should put things on which other
-        // function objects might depend on here (for instance field calculations)
-    }
     return true;
 }
 
@@ -242,15 +237,15 @@ bool Foam::functionObjects::swirlNumber::write()
         // itnerpolate onto the faces
 	surfaceVectorField UFace = fvc::interpolate(U);
 
-        scalar distanceVal;
+        // scalar distanceVal;
 
         //- Unit vectors to construct mutually orthogonal unit vectors to patchNormalVector
         // used in calculating tangential velocity component as OpenFOAM doesn't have builtin
         // implementation for cylindrical coordiante system. Calculations may seem trivial for 
         // faceZones whose normals are aligned with coordinate vectors.
-        vector tangentUnitVector1;
-        vector tangentUnitVector2;
-        vector axialUnitVector;
+        vector tangentUnitVector1(vector::zero);
+        vector tangentUnitVector2(vector::zero);
+        vector axialUnitVector(vector::zero);
 
         vectorField meshPoints = mesh_.Cf();
 
@@ -258,10 +253,10 @@ bool Foam::functionObjects::swirlNumber::write()
         
         for(label pointI = 0; pointI != zoneFaceCenters.size(); pointI++)
         {
-            distanceVal = mag(zoneFaceCenters[pointI] - originVector_);
+            // distanceVal = mag(zoneFaceCenters[pointI] - originVector_);
             
             //- Mutually orthogonal unit vectors in faceZone
-            if(distanceVal >= patchRadius_/5.) 
+            if(mag(zoneFaceCenters[pointI] - originVector_) >= patchRadius_/5.) 
             {
                 axialUnitVector = patchNormalVector_/mag(patchNormalVector_);
                 
@@ -276,11 +271,17 @@ bool Foam::functionObjects::swirlNumber::write()
         }
 
         //- Calculation of integrals necessary for calculation of swirl number
-        scalar GPhi(0.);
-        scalar Gx(0.);
+        scalar GPhi = 0;
+        scalar Gx = 0;
         // scalar magAxialU(0.);
         // scalar magTangentialU(0.);
 
+        // surfaceScalarField magTangentialU
+        //     (mag((UFace&tangentUnitVector1)*tangentUnitVector1 + (UFace&tangentUnitVector2)*tangentUnitVector2));
+        // 
+        // surfaceScalarField magAxialU(UFace&axialUnitVector);
+        // 
+        // scalarField radiusField(mag(zoneFaceCenters - originVector_));
 
         if(!(faces_.size()==zoneFaceCenters.size()))
         {
@@ -298,19 +299,22 @@ bool Foam::functionObjects::swirlNumber::write()
             scalarField radiusField(mag(zoneFaceCenters - originVector_));
 
             forAll(faces_, indxI)
+            // for(label indxI = 0; indxI < faces_.size(); indxI++)
+            {
                 GPhi += radiusField[indxI]*magAxialU[indxI]*magTangentialU[indxI]*mesh_.magSf()[faces_[indxI]];
-            forAll(faces_, indxI)    
+            // forAll(faces_, indxI)    
                 Gx += (sqr(magAxialU[indxI])-0.5*sqr(magTangentialU[indxI]))*mesh_.magSf()[faces_[indxI]];
-
+            }
             const scalar v_small = 1e-10;
         
-         scalar swirlNumber_ = returnReduce(GPhi/(patchRadius_*Gx + v_small), sumOp<scalar>());
-        // reduce(GPhi, sumOp<scalar>());
-        Info << "Swirl number = " <<  swirlNumber_<< endl;
-        // reduce(Gx, sumOp<scalar>());
+        reduce(GPhi, sumOp<scalar>());
+        // Info << "Swirl number = " <<  swirlNumber_<< endl;
+        reduce(Gx, sumOp<scalar>());
 
-        Info << "Swirl number = " << swirlNumber_ << " through "
-           << returnReduce(faces_.size(), sumOp<label>()) << " faces" << nl << endl;
+        //scalar swirlNumber_ = returnReduce(GPhi/(patchRadius_*Gx + v_small), sumOp<scalar>());
+        // scalar swirlNumber_ = GPhi/(patchRadius_*Gx + v_small);
+        // Info << "Swirl number = " << swirlNumber_ << " through "
+           // << returnReduce(faces_.size(), sumOp<label>()) << " faces" << nl << endl;
         // Info << "Numerator {GPhi} = " << GPhi  << returnReduce(faces_.size(), sumOp<label>()) << endl;
         // Info << "Denominator {R*Gx} = " << (Gx*patchRadius_) << returnReduce(faces_.size(), sumOp<label>()) << endl;
         // Output to file - only execute on the master thread to avoid the file
@@ -324,9 +328,14 @@ bool Foam::functionObjects::swirlNumber::write()
            // and creates it, if necessary. That also calls the .writeFileHeader()
            // method of the derived class.
 
+           const scalar swirlNumber_ = GPhi/(patchRadius_*Gx + v_small);
+           
            logFiles::write();
+            Info << "Swirl number = " << swirlNumber_ << nl;
            // Add the entry for this time step that has just been computed.
            file(MAIN_FILE) << obr_.time().value() << tab << swirlNumber_ << endl;
+           // writeTime(file(MAIN_FILE));
+           // file(MAIN_FILE) << tab << swirlNumber_ << endl;
        }
 
         }
