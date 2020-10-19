@@ -142,8 +142,8 @@ bool Foam::functionObjects::swirlNumber::read(const dictionary& dict)
     {
         velocityFieldName_ = dict.lookupOrDefault<word>("velocityFieldName", "U");
         patchRadius_= readScalar(dict.lookup("radius"));
-        originVector_ = dict.lookupOrDefault<vector>("origin",vector::zero);
-        patchNormalVector_ = dict.lookupOrDefault<vector>("normal",vector::zero);
+        originVector_ = dict.lookup("origin");
+        patchNormalVector_ = dict.lookup("normal");
     }
     return true;
 }
@@ -244,8 +244,6 @@ bool Foam::functionObjects::swirlNumber::write()
 
         scalar distanceVal;
 
-        bool unitVectorSwitch = false;
-
         //- Unit vectors to construct mutually orthogonal unit vectors to patchNormalVector
         // used in calculating tangential velocity component as OpenFOAM doesn't have builtin
         // implementation for cylindrical coordiante system. Calculations may seem trivial for 
@@ -260,13 +258,11 @@ bool Foam::functionObjects::swirlNumber::write()
         
         for(label pointI = 0; pointI != zoneFaceCenters.size(); pointI++)
         {
-            Info << "line 260" << endl;
             distanceVal = mag(zoneFaceCenters[pointI] - originVector_);
             
             //- Mutually orthogonal unit vectors in faceZone
             if(distanceVal >= patchRadius_/5.) 
             {
-                unitVectorSwitch = true;
                 axialUnitVector = patchNormalVector_/mag(patchNormalVector_);
                 
                 tangentUnitVector1 = zoneFaceCenters[pointI] - originVector_;
@@ -274,14 +270,12 @@ bool Foam::functionObjects::swirlNumber::write()
 
                 tangentUnitVector2 = (tangentUnitVector1 ^ axialUnitVector);
                 tangentUnitVector2 /= mag(tangentUnitVector2);
-                Info << "Axial vector calculated." << endl;
 
                 break; // break out of the loop as soon as unit vectors are determined 
             }
         }
 
         //- Calculation of integrals necessary for calculation of swirl number
-        scalar swirlNumber_;
         scalar GPhi(0.);
         scalar Gx(0.);
         // scalar magAxialU(0.);
@@ -294,7 +288,6 @@ bool Foam::functionObjects::swirlNumber::write()
         }
         else
         {
-            Info << "Starting swirl number calculation." << endl;
             // for(label indxI = 0; indxI!=faces_.size(); indxI++)
     
             surfaceScalarField magTangentialU
@@ -309,34 +302,35 @@ bool Foam::functionObjects::swirlNumber::write()
             forAll(faces_, indxI)    
                 Gx += (sqr(magAxialU[indxI])-0.5*sqr(magTangentialU[indxI]))*mesh_.magSf()[faces_[indxI]];
 
-            swirlNumber_ = GPhi/(patchRadius_*Gx);
-            Info << "Returned swirl number." << endl;
-            Info << "Swirl number = " <<  swirlNumber_<< endl;
+            const scalar v_small = 1e-10;
         
-        reduce(swirlNumber_, sumOp<scalar>());
+         scalar swirlNumber_ = returnReduce(GPhi/(patchRadius_*Gx + v_small), sumOp<scalar>());
         // reduce(GPhi, sumOp<scalar>());
+        Info << "Swirl number = " <<  swirlNumber_<< endl;
         // reduce(Gx, sumOp<scalar>());
 
         Info << "Swirl number = " << swirlNumber_ << " through "
-            << returnReduce(faces_.size(), sumOp<label>()) << " faces" << nl << endl;
+           << returnReduce(faces_.size(), sumOp<label>()) << " faces" << nl << endl;
         // Info << "Numerator {GPhi} = " << GPhi  << returnReduce(faces_.size(), sumOp<label>()) << endl;
         // Info << "Denominator {R*Gx} = " << (Gx*patchRadius_) << returnReduce(faces_.size(), sumOp<label>()) << endl;
         // Output to file - only execute on the master thread to avoid the file
         // getting written into from a few processors at the same time
-        if (Pstream::master())
-        {
-            // Call the base class method which checks if the output file exists
-            // and creates it, if necessary. That also calls the .writeFileHeader()
-            // method of the derived class.
-            logFiles::write();
 
-            // Add the entry for this time step that has just been computed.
-            file(MAIN_FILE) << obr_.time().value() << tab << swirlNumber_ << endl;
-        }
+ 
+        
+        if (Pstream::master())
+       {
+           // Call the base class method which checks if the output file exists
+           // and creates it, if necessary. That also calls the .writeFileHeader()
+           // method of the derived class.
+
+           logFiles::write();
+           // Add the entry for this time step that has just been computed.
+           file(MAIN_FILE) << obr_.time().value() << tab << swirlNumber_ << endl;
+       }
 
         }
     }
-    Info << "Done calculation!" << endl;
     return true;
 }
 // ************************************************************************* //

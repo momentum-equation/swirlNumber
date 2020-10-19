@@ -69,6 +69,7 @@ SourceFiles
 #include "fvc.H"
 #include "fvMeshFunctionObject.H"
 #include "logFiles.H"
+#include "PstreamReduceOps.H"
 #include "addToRunTimeSelectionTable.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -87,7 +88,7 @@ class swirlNumber
     public fvMeshFunctionObject,
     public logFiles
 {
-    private:
+    protected:
     // Private data
 
         //- Name of the functionObject
@@ -137,7 +138,7 @@ class swirlNumber
         //- Disallow default bitwise assignment
         void operator=(const swirlNumber&);
 
-    protected:
+    //protected:
          // NOTE: define a list of files this object writes to; the underlying logFiles
          // object will handle output to correct streams automatically.
          enum fileID
